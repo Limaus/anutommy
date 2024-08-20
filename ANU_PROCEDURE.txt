@@ -1,0 +1,145 @@
+CREATE OR REPLACE PROCEDURE E_sequrity_safe_room_arm_alert_penalty  IS
+
+  TYPE br_id IS RECORD(                --------------bulk collector                                   
+    branch_id NUMBER);
+    TYPE ItemSett IS TABLE OF br_id;
+  branchid ItemSett;
+  
+  Br_number number;                  
+  Br_count  number;
+  bh integer;
+  ah integer;
+  rm integer;
+  hs integer;
+  zm integer;
+  
+  
+Total_alert_count number;
+BH_Penalty number;
+RM_Penalty  number;
+AH_Penalty  number;
+zmop_Penalty number;
+Headsecurity_Penalty number;
+al date;
+Total_BH_Penalty number;
+Total_AH_Penalty number;
+Total_RH_Penalty number;
+Total_zmop_Penalty number;
+Total_no_branches number;
+Total_no_AH number;
+Total_no_RM number;
+Total_no_zmop number;
+
+
+  SGST_SUB        NUMBER;
+  CGST_SUB        NUMBER;
+  v_NetPay_gst    number;
+  netpay          number;
+  state_name_data varchar2(225);
+  state_name      varchar2(225);
+   v_voucherID   number;
+
+ 
+  v_EntryBranch tbl_gst_state.nodal_branch%type;
+
+  v_TransID         transaction_detail.trans_id%type;
+  v_Description     transaction_detail.descr%type;
+  v_NetPay          transaction_detail.amount%type := 0;
+  v_OldBranch       number := -1;
+  v_subAcc          number := -1;
+  V_acc_no          number := -1;
+  sal_record_status number := -1;
+  
+BEGIN
+
+
+select q.branch_id,q.cnt,q.penalty,to_number(q.emp_code),q.designation from                                       
+(select e.branch_id,e.cnt,((e.cnt-3)*10) penalty,p. BH_GOLDLOAN emp_code, 'BH' designation from             
+(select k.branch_id,k.cnt from
+(select t.branch_id,count(t.alert_id) cnt
+ from ASIRVAD_USER.SAFEROOM_EXCELUPLOAD t 
+ group by t.branch_id)k
+where k.cnt>3)e,
+
+(select r.BH_GOLDLOAN,r.BRANCH_ID from branch_dtl_new r )p
+where e.branch_id=p.BRANCH_ID
+
+-------------------------------------------------------BH CALCULATION-------------------------------------------------------
+
+UNION ALL
+select f.branch_id,f.cnt,(f.penalty/h.branch_cnt)penalty,f.emp_code,f.designation  from                         
+(select  e.branch_id,e.cnt,((e.cnt-3)*10) penalty,p.AH_GOLDLOAN emp_code,'AH' designation from 
+(select k.branch_id,k.cnt from
+(select t.branch_id,count(t.alert_id) cnt
+ from ASIRVAD_USER.SAFEROOM_EXCELUPLOAD t 
+ group by t.branch_id)k
+where k.cnt>3)e,
+
+(select r.BRANCH_ID ,r.AH_GOLDLOAN from branch_dtl_new r)p
+
+where e.branch_id=p.BRANCH_ID)f,
+
+(select count(r.BRANCH_ID) branch_cnt ,r.AH_GOLDLOAN from branch_dtl_new r group by r.AH_GOLDLOAN)h
+
+where f.emp_code=h.AH_GOLDLOAN
+
+
+-------------------------------------------------------AH CALCULATION-------------------------------------------------------
+
+UNION ALL
+select f.branch_id,f.cnt,(f.penalty/h.area_cnt)penalty,f.emp_code,f.designation  from
+
+(select  e.branch_id,e.cnt,((e.cnt-3)*10) penalty,p.RM_GOLDLOAN emp_code,'RM' designation from 
+(select k.branch_id,k.cnt from
+(select t.branch_id,count(t.alert_id) cnt
+ from ASIRVAD_USER.SAFEROOM_EXCELUPLOAD t 
+ group by t.branch_id)k
+where k.cnt>3)e,
+
+(select r.BRANCH_ID ,R.RM_GOLDLOAN
+ from branch_dtl_new r)p
+
+where e.branch_id=p.BRANCH_ID)f,
+
+(select count(r.area_id) area_cnt,r.RM_GOLDLOAN from branch_dtl_new r  group by r.RM_GOLDLOAN )h
+
+where f.emp_code=h.RM_GOLDLOAN)q
+
+-------------------------------------------------------RM CALCULATION-------------------------------------------------------
+
+union all
+select   w.BRANCH_ID,w.cnt,(w. penalty/k.reg_cnt)penalty,  w.emp_code,w.designation
+ from 
+(select  p.BRANCH_ID,p.cnt,((p.cnt-3)*10) penalty, t.zonal_head emp_code,'ZM' designation
+ from 
+(select k.branch_id,k.cnt from
+(select t.branch_id,count(t.alert_id) cnt
+ from ASIRVAD_USER.SAFEROOM_EXCELUPLOAD t 
+ group by t.branch_id)k
+where k.cnt>3)p,
+
+aml_gloan.branch_detail t
+where p.branch_id=t.branch_id)w,
+(select count(t.reg_id) reg_cnt,t.zonal_head from AML_GLOAN.BRANCH_DETAIL t group by t.zonal_head)k
+where w.emp_code=k.zonal_head;
+
+-------------------------------------------------------ZM CALCULATION-------------------------------------------------------
+
+/*select f.branch_id,p.cnt,emp_code,'HES' DESIGNATION FROM
+(select j.emp_code,j.zonal_id,b.branch_id from
+(select f.emp_code,f.branch_id,k.zonal_id from 
+(select r.emp_code,r.branch_id from employee_master r where r.post_id=108)f,
+ aml_gloan.branch_detail k 
+ where f.branch_id=k.branch_id)j,
+ aml_gloan.branch_detail b
+ where j.zonal_id=b.zonal_id)f,
+ (select k.branch_id,k.cnt from
+(select t.branch_id,count(t.alert_id) cnt
+ from ASIRVAD_USER.SAFEROOM_EXCELUPLOAD t 
+ group by t.branch_id)k
+where k.cnt>3)p
+
+where f.branch_id=p.branch_id;
+
+SELECT * FROM aml_gloan.branch_detail b
+ */
