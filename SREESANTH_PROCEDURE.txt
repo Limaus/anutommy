@@ -1,0 +1,693 @@
+CREATE OR REPLACE PROCEDURE proc_esec_grillpenaltyY IS
+
+  ----------------sreesanth----------------------------
+  TYPE Employee IS RECORD(
+    empcode NUMBER);
+  TYPE ItemSett IS TABLE OF Employee;
+  customerbranch ItemSett; -- customerbranch(i).empcode
+
+  ----------------------------------
+  Type empcode Is record(
+    employeecd number);
+  Type itemset2 is table of empcode;
+  penaltyemployee itemset2;
+  ecount          number;
+  cost            number;
+  -----------------------------------------------------
+
+  total_datas     date;
+  totaldays       number;
+  previous_dte    date;
+  phno            number;
+  s_name          number;
+  SGST_SUB        NUMBER;
+  CGST_SUB        NUMBER;
+  v_NetPay_gst    number;
+  netpay          number;
+  state_name_data varchar2(225);
+  state_name      varchar2(225);
+  v_start_date    date;
+  v_cost          NUMBER;
+  bh_gl           number;
+  ams_gl          varchar(20);
+  rm_gl           varchar(20);
+  ah_gl           varchar(20);
+  reg             number;
+  post            number;
+  v_current_date  DATE;
+  cust            number;
+  custo           number;
+  c_com_status    number;
+  v_comp_status   number;
+
+  -- p_emp_code  number;
+  -- v_SalDate        transaction_detail.descr%type;
+
+  v_EntryBranch tbl_gst_state.nodal_branch%type;
+
+  v_TransID         transaction_detail.trans_id%type;
+  v_Description     transaction_detail.descr%type;
+  v_NetPay          transaction_detail.amount%type := 0;
+  v_OldBranch       number := -1;
+  v_subAcc          number := -1;
+  V_acc_no          number := -1;
+  sal_record_status number := -1;
+
+BEGIN
+
+  v_EntryBranch := 0;
+  ------------------------------------------setting count of employee into  and cost = 0 --------------------------
+  ecount := 0;
+  cost   := 0;
+  netpay := cost;
+
+  select count(*)
+    into cust --branchid
+    from asirvad_user.TBL_ESEC_GRILLREPAIRS_EXCEL t,
+         aml_hrm.branch_dtl_new                   b
+   where t.complaint_status in (2, 3)
+     and t.complaint_status is not null
+     and t.customer_id = b.BRANCH_ID
+     AND to_date(t.complaint_date + 3, 'dd/mm/yyyy') < sysdate;
+
+  select count(*)
+    into custo --branchid
+    from asirvad_user.TBL_ESEC_GRILLREPAIRS_EXCEL t,
+         aml_hrm.branch_dtl_new                   b
+   where t.complaint_status in (2, 3)
+     and t.complaint_status is not null
+     and t.customer_id = b.BRANCH_ID
+     AND to_date(t.complaint_date + 5, 'dd/mm/yyyy') < sysdate;
+
+  if cust > 0 then
+  
+    select distinct t.customer_id
+      bulk collect
+      into customerbranch --branchid
+      from asirvad_user.TBL_ESEC_GRILLREPAIRS_EXCEL t,
+           aml_hrm.branch_dtl_new                   b
+     where t.complaint_status in (2, 3)
+       and t.customer_id = b.BRANCH_ID
+       AND to_date(t.complaint_date + 3, 'dd/mm/yyyy') < sysdate;
+  
+    FOR i IN customerbranch.FIRST .. customerbranch.LAST LOOP
+    
+      select distinct b.GL_reg_id
+        into reg
+        from aml_hrm.branch_dtl_new b
+       where b.BRANCH_ID = customerbranch(i).empcode;
+    
+      select x.employeecd
+        bulk collect
+        into penaltyemployee
+        from (select distinct to_number(b.BH_GOLDLOAN) employeecd
+                from aml_hrm.branch_dtl_new b
+               where b.BRANCH_ID = customerbranch(i).empcode
+               and b.BH_GOLDLOAN is not null
+              union all
+              select distinct to_number(b.AH_GOLDLOAN) employeecd
+                from aml_hrm.branch_dtl_new b
+               where b.BRANCH_ID = customerbranch(i).empcode
+               and b.AH_GOLDLOAN is not null
+              union all
+              select distinct to_number(max(b.RM_GOLDLOAN)) employeecd
+                from aml_hrm.branch_dtl_new b
+               where b.BRANCH_ID = customerbranch(i).empcode
+                and b.RM_GOLDLOAN is not null
+              union all
+              select distinct to_number(e.emp_code) employeecd
+                from aml_hrm.employee_master e,
+                     aml_hrm.department_mst  t,
+                     aml_hrm.branch_dtl_new  b
+               where e.post_id = 176
+                 and e.status_id = 1
+                 and b.BRANCH_ID = e.branch_id
+                 and e.department_id = t.dep_id
+                 and t.category = 10
+                 and b.GL_reg_id = reg) x;
+    
+      FOR j IN penaltyemployee.FIRST .. penaltyemployee.LAST LOOP
+        --branch id has penalty
+      
+        select max (p.post_id)
+          into post
+          from aml_hrm.employee_master k,aml_hrm.post_mst p
+         where k.emp_code = penaltyemployee(j).employeecd --penalty caused employees
+           and k.post_id = p.post_id;
+      
+        if post = 74 then
+          --------------------------akshaya---               
+          DECLARE
+            CURSOR c_complaint_statuses IS
+              select t.complaint_status
+                from asirvad_user.TBL_ESEC_GRILLREPAIRS_EXCEL t;
+          
+          BEGIN
+            -- Loop through each complaint status
+            FOR complaint_rec IN c_complaint_statuses LOOP
+              IF complaint_rec.complaint_status IN (2, 3) THEN
+                v_cost := 500;
+              ELSE
+                CONTINUE;
+              END IF;
+            
+            END LOOP;
+          END;
+          ----------------------------------------------       
+        else
+        
+          if post = 176 OR post = 92 OR post = 23 OR post = 262 /*OR post= 125*/
+           then
+            --------------------------------------------------
+            
+            DECLARE
+              CURSOR sec_complaint_statuses IS
+                select t.complaint_status
+                  from asirvad_user.TBL_ESEC_GRILLREPAIRS_EXCEL t;
+            
+            BEGIN
+              -- Loop through each complaint status
+              FOR sec_complaint_recc IN sec_complaint_statuses LOOP
+                -- Assign cost for the first day with penalty
+                IF sec_complaint_recc.complaint_status IN (2, 3) THEN
+                  v_cost := 250; -- Initial penalty of 250 at the start
+                ELSE
+                  -- Move to the next complaint status if it's not 2 or 3
+                  CONTINUE;
+                END IF;
+              
+              -- Use the assigned cost for further processing
+              -- Your code to use the assigned cost goes here
+              END LOOP;
+            END;
+            --------------------------------------------------------------------------------------         
+          end if;
+        end if;
+      
+        --end loop;
+      
+     --   if (ecount <> 0) then
+        
+          v_TransID := aml_accounts.voucherid(3, v_EntryBranch);
+          select TRUNC(ADD_MONTHS(SYSDATE, -2), 'MM')
+            into previous_dte
+            from dual;
+        
+          select t.status_id
+            into sal_record_status
+            from aml_hrm.employee_master t
+           where t.emp_code = penaltyemployee(j).employeecd; --branhid;
+        
+          if ((sal_record_status = 3) or (sal_record_status = 5)) then
+            V_acc_no      := 30803;
+            v_Description := upper('PENALTY FOR NOT REPAIRING BRANCH GRILL GATE' || '-' ||
+                                   substr(customerbranch(i).empcode, 1, 30));
+          else
+            V_acc_no      := 30801;
+            v_Description := upper('PENALTY FOR NOT REPAIRING BRANCH GRILL GATE' || '-' ||
+                                   substr(customerbranch(i).empcode, 1, 30));
+          end if;
+        
+          if v_OldBranch <> v_EntryBranch then
+          
+            netpay := v_cost;
+          
+            if netpay <> 0 then
+            
+              v_subAcc := 0;
+              select nvl(sum(t.account_no), 1)
+                into v_subAcc
+                from aml_accounts.subsidary_master t
+               where t.account_no = customerbranch(i).empcode
+                 and t.parent_acc = V_acc_no
+                 and t.branch_id = 0
+                 and t.status_id = 1;
+            
+              select distinct (j.branch_id)
+                into s_name
+                from aml_hrm.employee_master j
+               where j.emp_code = penaltyemployee(j).employeecd;
+            
+              if netpay > 0 then
+              
+                if v_subAcc > 0 then
+                
+                  insert into tbl_hrm_subsidary_transaction --aml_accounts.subsidary_transaction j----tbl_hrm_subsidary_transaction(dummy)
+                    (firm_id,
+                     branch_id,
+                     parent_acc,
+                     account_no,
+                     trans_no,
+                     amount,
+                     type,
+                     tra_dt,
+                     pay_mode,
+                     descr,
+                     trans_id,
+                     sub_id,
+                     segment_id,
+                     serial_no)
+                  values
+                    (3,
+                     0,
+                     V_acc_no,
+                     v_subAcc,
+                     0,
+                     abs(netpay),
+                     'D',
+                     sysdate,
+                     'TR',
+                     v_Description,
+                     v_TransID,
+                     0,
+                     0,
+                     0);
+                  commit;
+                
+                  insert into tbl_hrm_subsidary_transaction ------------aml_accounts.subsidary_transaction
+                    (firm_id,
+                     branch_id,
+                     parent_acc,
+                     account_no,
+                     trans_no,
+                     amount,
+                     type,
+                     tra_dt,
+                     pay_mode,
+                     descr,
+                     trans_id,
+                     sub_id,
+                     segment_id,
+                     serial_no)
+                  values
+                    (3,
+                     v_EntryBranch,
+                     20307,
+                     203071,
+                     0,
+                     abs(netpay),
+                     'C',
+                     sysdate,
+                     'TR',
+                     v_Description,
+                     v_TransID,
+                     0,
+                     0,
+                     0);
+                  commit; --here
+                
+                  insert into tbl_hrm_transaction_detail a ---------aml_accounts.transaction_detail a
+                  
+                    (firm_id,
+                     branch_id,
+                     module_id,
+                     transno,
+                     ref_id,
+                     account_no,
+                     type,
+                     amount,
+                     tra_dt,
+                     pay_mode,
+                     value_dt,
+                     descr,
+                     user_id,
+                     trans_id,
+                     contra_no,
+                     narration,
+                     segment_id,
+                     serial_no)
+                  values
+                    (3,
+                     v_EntryBranch,
+                     1,
+                     0,
+                     customerbranch(i).empcode,
+                     20307,
+                     'C',
+                     abs(netpay),
+                     sysdate,
+                     'TR',
+                     sysdate,
+                     v_Description,
+                     'BRANCH GRILL REPAIR PENALTY',
+                     v_TransID,
+                     0,
+                     'BEING ' || v_Description,
+                     0,
+                     0);
+                  commit;
+                
+                  insert into tbl_hrm_transaction_detail a ---------aml_accounts.transaction_detail a
+                    (firm_id,
+                     branch_id,
+                     module_id,
+                     transno,
+                     ref_id,
+                     account_no,
+                     type,
+                     amount,
+                     tra_dt,
+                     pay_mode,
+                     value_dt,
+                     descr,
+                     user_id,
+                     trans_id,
+                     contra_no,
+                     narration,
+                     segment_id,
+                     serial_no)
+                  values
+                    (3,
+                     v_EntryBranch,
+                     1,
+                     0,
+                     customerbranch(i).empcode,
+                     V_acc_no,
+                     'D',
+                     abs(netpay),
+                     sysdate,
+                     'TR',
+                     sysdate,
+                     v_Description,
+                     'BRANCH GRILL REPAIR PENALTY',
+                     v_TransID,
+                     0,
+                     'BEING ' || v_Description,
+                     0,
+                     0);
+                  commit;
+                
+                end if;
+              end if;
+            
+            end if;
+          end if;
+        
+          ------------------------------------------------------
+      --  END IF;
+      end loop;
+    end loop;
+  
+  end if;
+
+  if custo > 0 then
+    select distinct t.customer_id
+      bulk collect
+      into customerbranch --branchid
+      from asirvad_user.TBL_ESEC_GRILLREPAIRS_EXCEL t,
+           aml_hrm.branch_dtl_new                   b
+     where t.complaint_status in (2, 3)
+       and t.customer_id = b.BRANCH_ID
+       AND to_date(t.complaint_date + 5, 'dd/mm/yyyy') < sysdate;
+       
+       
+       FOR i IN customerbranch.FIRST .. customerbranch.LAST LOOP
+    
+      select distinct b.GL_reg_id
+        into reg
+        from aml_hrm.branch_dtl_new b
+       where b.BRANCH_ID = customerbranch(i).empcode;
+    
+      select x.employeecd
+        bulk collect
+        into penaltyemployee
+        from (select distinct to_number(max(b.RM_GOLDLOAN)) employeecd
+                from aml_hrm.branch_dtl_new b
+               where b.BRANCH_ID = customerbranch(i).empcode
+              union all
+              select distinct to_number(e.emp_code) employeecd
+                from aml_hrm.employee_master e,
+                     aml_hrm.department_mst  t,
+                     aml_hrm.branch_dtl_new  b
+               where e.post_id = 176
+                 and e.status_id = 1
+                 and b.BRANCH_ID = e.branch_id
+                 and e.department_id = t.dep_id
+                 and t.category = 10
+                 and b.GL_reg_id = reg) x;
+    
+      FOR j IN penaltyemployee.FIRST .. penaltyemployee.LAST LOOP
+        --branch id has penalty
+      
+        select max(p.post_id)
+          into post
+          from aml_hrm.employee_master k, post_mst p
+         where k.emp_code = penaltyemployee(j).employeecd --penalty caused employees
+           and k.post_id = p.post_id;
+      
+     /*   if post = 74 then
+          --------------------------akshaya---               
+          DECLARE
+            CURSOR c_complaint_statuses IS
+              select t.complaint_status
+                from asirvad_user.TBL_ESEC_GRILLREPAIRS_EXCEL t;
+          
+          BEGIN
+            -- Loop through each complaint status
+            FOR complaint_rec IN c_complaint_statuses LOOP
+              IF complaint_rec.complaint_status IN (2, 3) THEN
+                v_cost := 500;
+              ELSE
+                CONTINUE;
+              END IF;
+            
+            END LOOP;
+          END;
+          ----------------------------------------------       
+        else*/
+        
+          if post = 176 OR post = 92 OR post = 23 OR post = 262 /*OR post= 125*/
+           then
+            --------------------------------------------------
+            
+            DECLARE
+              CURSOR sec_complaint_statuses IS
+                select t.complaint_status
+                  from asirvad_user.TBL_ESEC_GRILLREPAIRS_EXCEL t;
+            
+            BEGIN
+              -- Loop through each complaint status
+              FOR sec_complaint_recc IN sec_complaint_statuses LOOP
+                -- Assign cost for the first day with penalty
+                IF sec_complaint_recc.complaint_status IN (2, 3) THEN
+                  v_cost := 500; -- Initial penalty of 250 at the start
+                ELSE
+                  -- Move to the next complaint status if it's not 2 or 3
+                  CONTINUE;
+                END IF;
+              
+              -- Use the assigned cost for further processing
+              -- Your code to use the assigned cost goes here
+              END LOOP;
+            END;
+            --------------------------------------------------------------------------------------         
+          end if;
+        
+      
+        --end loop;
+      
+      --  if (ecount <> 0) then
+        
+          v_TransID := aml_accounts.voucherid(3, v_EntryBranch);
+          select TRUNC(ADD_MONTHS(SYSDATE, -2), 'MM')
+            into previous_dte
+            from dual;
+        
+          select t.status_id
+            into sal_record_status
+            from aml_hrm.employee_master t
+           where t.emp_code =  penaltyemployee(j).employeecd; --branhid;
+        
+          if ((sal_record_status = 3) or (sal_record_status = 5)) then
+            V_acc_no      := 30803;
+            v_Description := upper('PENALTY FOR NOT REPAIRING BRANCH GRILL GATE' || '-' ||
+                                   substr(customerbranch(i).empcode, 1, 30));
+          else
+            V_acc_no      := 30801;
+            v_Description := upper('PENALTY FOR NOT REPAIRING BRANCH GRILL GATE' || '-' ||
+                                   substr(customerbranch(i).empcode, 1, 30));
+          end if;
+        
+          if v_OldBranch <> v_EntryBranch then
+          
+            netpay := v_cost;
+          
+            if netpay <> 0 then
+            
+              v_subAcc := 0;
+              select nvl(sum(t.account_no), 1)
+                into v_subAcc
+                from aml_accounts.subsidary_master t
+               where t.account_no =  penaltyemployee(j).employeecd
+                 and t.parent_acc = V_acc_no
+                 and t.branch_id = 0
+                 and t.status_id = 1;
+            
+              select distinct (j.branch_id)
+                into s_name
+                from aml_hrm.employee_master j
+               where j.emp_code =  penaltyemployee(j).employeecd;
+            
+              if netpay > 0 then
+              
+                if v_subAcc > 0 then
+                
+                  insert into tbl_hrm_subsidary_transaction --aml_accounts.subsidary_transaction j----tbl_hrm_subsidary_transaction(dummy)
+                    (firm_id,
+                     branch_id,
+                     parent_acc,
+                     account_no,
+                     trans_no,
+                     amount,
+                     type,
+                     tra_dt,
+                     pay_mode,
+                     descr,
+                     trans_id,
+                     sub_id,
+                     segment_id,
+                     serial_no)
+                  values
+                    (3,
+                     0,
+                     V_acc_no,
+                     v_subAcc,
+                     0,
+                     abs(netpay),
+                     'D',
+                     sysdate,
+                     'TR',
+                     v_Description,
+                     v_TransID,
+                     0,
+                     0,
+                     0);
+                  commit;
+                
+                  insert into tbl_hrm_subsidary_transaction ------------aml_accounts.subsidary_transaction
+                    (firm_id,
+                     branch_id,
+                     parent_acc,
+                     account_no,
+                     trans_no,
+                     amount,
+                     type,
+                     tra_dt,
+                     pay_mode,
+                     descr,
+                     trans_id,
+                     sub_id,
+                     segment_id,
+                     serial_no)
+                  values
+                    (3,
+                     v_EntryBranch,
+                     20307,
+                     203071,
+                     0,
+                     abs(netpay),
+                     'C',
+                     sysdate,
+                     'TR',
+                     v_Description,
+                     v_TransID,
+                     0,
+                     0,
+                     0);
+                  commit; --here
+                
+                  insert into tbl_hrm_transaction_detail a ---------aml_accounts.transaction_detail a
+                  
+                    (firm_id,
+                     branch_id,
+                     module_id,
+                     transno,
+                     ref_id,
+                     account_no,
+                     type,
+                     amount,
+                     tra_dt,
+                     pay_mode,
+                     value_dt,
+                     descr,
+                     user_id,
+                     trans_id,
+                     contra_no,
+                     narration,
+                     segment_id,
+                     serial_no)
+                  values
+                    (3,
+                     v_EntryBranch,
+                     1,
+                     0,
+                     customerbranch(i).empcode,
+                     20307,
+                     'C',
+                     abs(netpay),
+                     sysdate,
+                     'TR',
+                     sysdate,
+                     v_Description,
+                     'BRANCH GRILL REPAIR PENALTY',
+                     v_TransID,
+                     0,
+                     'BEING ' || v_Description,
+                     0,
+                     0);
+                  commit;
+                
+                  insert into tbl_hrm_transaction_detail a ---------aml_accounts.transaction_detail a
+                    (firm_id,
+                     branch_id,
+                     module_id,
+                     transno,
+                     ref_id,
+                     account_no,
+                     type,
+                     amount,
+                     tra_dt,
+                     pay_mode,
+                     value_dt,
+                     descr,
+                     user_id,
+                     trans_id,
+                     contra_no,
+                     narration,
+                     segment_id,
+                     serial_no)
+                  values
+                    (3,
+                     v_EntryBranch,
+                     1,
+                     0,
+                     customerbranch(i).empcode,
+                     V_acc_no,
+                     'D',
+                     abs(netpay),
+                     sysdate,
+                     'TR',
+                     sysdate,
+                     v_Description,
+                     'BRANCH GRILL REPAIR PENALTY',
+                     v_TransID,
+                     0,
+                     'BEING ' || v_Description,
+                     0,
+                     0);
+                  commit;
+                
+                end if;
+              end if;
+            
+            end if;
+          end if;
+        
+          ------------------------------------------------------
+      --  END IF;
+      end loop;
+    end loop;
+  
+  
+  end if;
+END;
