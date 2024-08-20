@@ -1,0 +1,130 @@
+create or replace procedure proc_alarmpwd_penalty_reversal is
+
+v_Descr varchar2(200);
+v_narration varchar2(250);
+
+begin
+  for penalty_rev in(
+select t.emp_code,t.transid,t.status,t.amount
+  from TBL_ALARM_PENALTY_TRACK t, TBL_PSWD_CHNG_EXCEPTION_DTLS e
+ where t.brid = e.br_id
+   and to_date(t.entered_on) between to_date(e.exeption_fdt) and
+       to_date(e.exeption_todt)
+   and e.status in (1, 3) and t.transid is not null) loop
+
+  v_Descr :='REV - ALARM PASSWORD CHANGING PENDING PENALTY';
+  v_narration:='BEING '||v_Descr;
+  
+   insert into transaction_detail ---tbl_hrm_transaction_detail----------   ---CREDIT ENTRY
+      (firm_id,
+       branch_id,
+       module_id,
+       transno,
+       ref_id,
+       account_no,
+       type,
+       amount,
+       tra_dt,
+       pay_mode,
+       value_dt,
+       descr,
+       user_id,
+       trans_id,
+       contra_no,
+       narration,
+       segment_id)
+    values
+      (3,
+       0,
+       1,
+       0,
+       penalty_rev.emp_code,
+       20307,
+       'D',
+       100,
+       sysdate,
+       'TR',
+       sysdate,
+       v_Descr,
+       'NEFT',
+       penalty_rev.transid,
+       0,
+       v_narration,
+       0);
+    insert into transaction_detail ----tbl_hrm_transaction_detail------   ----DEBIT ENTRY
+      (firm_id,
+       branch_id,
+       module_id,
+       transno,
+       ref_id,
+       account_no,
+       type,
+       amount,
+       tra_dt,
+       pay_mode,
+       value_dt,
+       descr,
+       user_id,
+       trans_id,
+       contra_no,
+       narration,
+       segment_id)
+    values
+       (3,
+       0,
+       1,
+       0,
+       penalty_rev.emp_code,
+       30801,
+       'C',
+       100,
+       sysdate,
+       'TR',
+       sysdate,
+       v_Descr,
+       'NEFT',
+       penalty_rev.transid,
+       0,
+       v_narration,
+       0);
+    insert into aml_accounts.subsidary_transaction ---- tbl_hrm_subsidary_transaction  ----CREDIT ENTRY
+    values
+      (3,
+       0,
+       20307,
+       203071,
+       0,
+       100,
+       'D',
+       to_date(sysdate),
+       'TR',
+       UPPER(v_Descr),
+       penalty_rev.transid,
+       0,
+       0,
+       0);
+    insert into aml_accounts.subsidary_transaction ---------tbl_hrm_subsidary_transaction -----DEBIT ENTRY
+    values
+      (3,
+       0,
+       30801, ---STAFF ACCOUNT
+       penalty_rev.emp_code, ---EMPLOYEE CODE
+       0,
+       100,
+       'C',
+       to_date(sysdate),
+       'TR',
+       UPPER(v_Descr),
+       penalty_rev.transid,
+       0,
+       0,
+       0);
+   COMMIT; 
+
+ update TBL_ALARM_PENALTY_TRACK t 
+ set t.status=3 where t.emp_code=penalty_rev.emp_code
+ and t.transid=penalty_rev.transid and t.status=penalty_rev.status;
+
+end loop;
+end proc_alarmpwd_penalty_reversal;
+/
