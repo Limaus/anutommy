@@ -1,0 +1,345 @@
+create or replace procedure proc_alarmpwd_penalty_deduct as
+  lvcnt         number;
+  lvchk         number;
+  v_D_ledger    number := 30801;
+  v_C_ledger    number := 20307;
+  v_C_subledger number := 203071;
+  v_voucherID   number;
+  v_Descr       varchar2(100);
+  v_narration   varchar2(100);
+  blck          number;
+
+  cursor Cur11 is 
+  
+    select t.branch_id,
+           t.emp_code,
+           t.from_dt,
+           last_updated_dt,
+           t.punch_date,
+           trunc(sysdate) - trunc(t.punch_date)
+      from (select m.branch_id,
+                   m.emp_code,
+                   m.from_dt,
+                   min(a.curr_date) punch_date,
+                   m.status_id,
+                   m.post_id
+              from employ_transfer_dtl m, aml_users.tbl_attend a
+             where a.branch_id = m.branch_id
+               and (a.m_time is not null or a.e_time is not null)
+               and m.to_dt is null
+               and m.status_id = 8
+               and m.post_id in (74, 75)
+               and m.emp_code = a.emp_code
+             group by m.branch_id,
+                      m.emp_code,
+                      m.from_dt,
+                      m.status_id,
+                      m.post_id) t
+      left join (select v.br_id, max(v.last_updated_dt) last_updated_dt
+                   from tbl_pswd_pending v
+                  group by v.br_id) p
+        on p.br_id = t.branch_id
+     where t.post_id in (74, 75)
+       and t.status_id = 8
+       and t.from_dt > '21-jul-2024'
+       and trunc(sysdate) - trunc(t.punch_date) >= 5;
+
+  cursor Cur12 is
+  
+    select b.BRANCH_ID,
+           x.max_dt,
+           trunc(sysdate) - nvl(x.max_dt, '21-jul-2024')
+      from branch_dtl_new b
+      left join (select t.br_id branch_id, max(t.last_updated_dt) max_dt
+                   from TBL_PSWD_PENDING t
+                  group by t.br_id) x
+        on x.branch_id = b.BRANCH_ID
+     where b.RM_GOLDLOAN is not null
+       and trunc(sysdate) - nvl(x.max_dt, '21-jul-2024') >= 45;
+
+  r1   Cur11%rowtype;
+  r2   Cur12%rowtype;
+  hler number;
+  bid  number;
+
+begin
+
+  select t.emp_code into hler from tbl_pswd_handler t where t.status = 1;
+  select e.branch_id
+    into bid
+    from employee_master e
+   where e.emp_code = hler;
+  open Cur11;
+  loop
+    fetch Cur11
+      into r1;
+    exit when Cur11%notfound;
+  
+    v_voucherID := aml_accounts.voucherid(3, 0);
+    commit;
+  
+    insert into TBL_ALARM_PENALTY_TRACK
+      (emp_code, brid, amount, transid, entered_on, status)
+    values
+      (hler, r1.branch_id, 100, v_voucherID, sysdate, 1);
+    commit;
+  
+    v_Descr     := 'ALARM PASSWORD CHANGING PENDING PENALTY';
+    v_narration := 'BEING ' || v_Descr;
+  
+    select count(*)
+      into blck
+      from general_parameter t
+     where t.module_id = 99
+       and t.parmtr_id = 99
+       and t.parmtr_value = '1';
+    if blck > 0 then
+      insert into transaction_detail ---tbl_hrm_transaction_detail----------   ---CREDIT ENTRY
+        (firm_id,
+         branch_id,
+         module_id,
+         transno,
+         ref_id,
+         account_no,
+         type,
+         amount,
+         tra_dt,
+         pay_mode,
+         value_dt,
+         descr,
+         user_id,
+         trans_id,
+         contra_no,
+         narration,
+         segment_id)
+      values
+        (3,
+         bid,
+         1,
+         0,
+         hler,
+         v_C_ledger,
+         'C',
+         100,
+         sysdate,
+         'TR',
+         sysdate,
+         v_Descr,
+         'PENALTY',
+         v_voucherID,
+         0,
+         v_narration,
+         0);
+      insert into transaction_detail ----tbl_hrm_transaction_detail------   ----DEBIT ENTRY
+        (firm_id,
+         branch_id,
+         module_id,
+         transno,
+         ref_id,
+         account_no,
+         type,
+         amount,
+         tra_dt,
+         pay_mode,
+         value_dt,
+         descr,
+         user_id,
+         trans_id,
+         contra_no,
+         narration,
+         segment_id)
+      values
+        (3,
+         bid,
+         1,
+         0,
+         hler,
+         v_D_ledger,
+         'D',
+         100,
+         sysdate,
+         'TR',
+         sysdate,
+         v_Descr,
+         'PENALTY',
+         v_voucherID,
+         0,
+         v_narration,
+         0);
+      insert into aml_accounts.subsidary_transaction ---- tbl_hrm_subsidary_transaction  ----CREDIT ENTRY
+      values
+        (3,
+         0,
+         v_C_ledger,
+         v_C_subledger,
+         0,
+         100,
+         'C',
+         to_date(sysdate),
+         'TR',
+         UPPER(v_Descr),
+         v_voucherID,
+         0,
+         0,
+         0);
+      insert into aml_accounts.subsidary_transaction ---------tbl_hrm_subsidary_transaction -----DEBIT ENTRY
+      values
+        (3,
+         0,
+         v_D_ledger, ---STAFF ACCOUNT
+         hler, ---EMPLOYEE CODE
+         0,
+         100,
+         'D',
+         to_date(sysdate),
+         'TR',
+         UPPER(v_Descr),
+         v_voucherID,
+         0,
+         0,
+         0);
+    end if;
+    COMMIT;
+  end loop;
+  close Cur11;
+
+  open Cur12;
+  loop
+    fetch Cur12
+      into r2;
+    exit when Cur12%notfound;
+    v_voucherID := aml_accounts.voucherid(3, 0);
+    commit;
+    insert into TBL_ALARM_PENALTY_TRACK
+      (emp_code, brid, amount, transid, entered_on, status)
+    values
+      (hler, r2.branch_id, 100, v_voucherID, sysdate, 2);
+    commit;
+    v_Descr     := 'ALARM PASSWORD CHANGING PENDING PENALTY';
+    v_narration := 'BEING ' || v_Descr;
+    select count(*)
+      into blck
+      from general_parameter t
+     where t.module_id = 99
+       and t.parmtr_id = 99
+       and t.parmtr_value = '1';
+  
+    if blck > 0 then
+      insert into transaction_detail ---tbl_hrm_transaction_detail----------   ---CREDIT ENTRY
+        (firm_id,
+         branch_id,
+         module_id,
+         transno,
+         ref_id,
+         account_no,
+         type,
+         amount,
+         tra_dt,
+         pay_mode,
+         value_dt,
+         descr,
+         user_id,
+         trans_id,
+         contra_no,
+         narration,
+         segment_id)
+      values
+        (3,
+         bid,
+         1,
+         0,
+         hler,
+         v_C_ledger,
+         'C',
+         100,
+         sysdate,
+         'TR',
+         sysdate,
+         v_Descr,
+         'NEFT',
+         v_voucherID,
+         0,
+         v_narration,
+         0);
+      insert into transaction_detail ----tbl_hrm_transaction_detail------   ----DEBIT ENTRY
+        (firm_id,
+         branch_id,
+         module_id,
+         transno,
+         ref_id,
+         account_no,
+         type,
+         amount,
+         tra_dt,
+         pay_mode,
+         value_dt,
+         descr,
+         user_id,
+         trans_id,
+         contra_no,
+         narration,
+         segment_id)
+      values
+        (3,
+         bid,
+         1,
+         0,
+         hler,
+         v_D_ledger,
+         'D',
+         100,
+         sysdate,
+         'TR',
+         sysdate,
+         v_Descr,
+         'NEFT',
+         v_voucherID,
+         0,
+         v_narration,
+         0);
+      insert into aml_accounts.subsidary_transaction ---- tbl_hrm_subsidary_transaction  ----CREDIT ENTRY
+      values
+        (3,
+         0,
+         v_C_ledger,
+         v_C_subledger,
+         0,
+         100,
+         'C',
+         to_date(sysdate),
+         'TR',
+         UPPER(v_Descr),
+         v_voucherID,
+         0,
+         0,
+         0);
+      insert into aml_accounts.subsidary_transaction ---------tbl_hrm_subsidary_transaction -----DEBIT ENTRY
+      values
+        (3,
+         0,
+         v_D_ledger, ---STAFF ACCOUNT
+         hler, ---EMPLOYEE CODE
+         0,
+         100,
+         'D',
+         to_date(sysdate),
+         'TR',
+         UPPER(v_Descr),
+         v_voucherID,
+         0,
+         0,
+         0);
+      commit;
+    end if;
+  end loop;
+
+  close Cur11;
+
+exception
+  when others then
+    rollback;
+    insert into hrm_leave_exception values (r1.emp_code, sysdate, 6);
+    commit;
+  
+end;
+/
