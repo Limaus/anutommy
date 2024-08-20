@@ -1,0 +1,102 @@
+Respected sir,
+
+1. Automated penalty systems need to be developed for No safe room arm alert. Alert details should collect from intellve supervisor report. Alert report should be taken after 9 pm on the same day. Penalty will be calculated based on below table
+
+Safe/Strong room Up to three alerts in a day, a penalty will not be imposed. From fourth alert onward penalty should be Imposed Rs.10/- per alert. Example   In a day if any branch getting 10 alerts, Penalty will be imposed only 7 alerts (10-3=7),
+
+So 7 X Rs.10= Rs.70
+
+sl   Particular			penalty
+
+Branch Head             Rs.10( 4th  alert onwards)
+
+2 Area Head     	Average of respective all BH penalty
+
+3 Regional Manager      Average of respective all AH penalty
+
+4 ZMOP			Average of respective all RM penalty
+
+5 HEAD Security         Average of respective all ZM op  penalty
+
+ 
+
+2. Exceptions can be punch by individuals .Approval will done as per below matrix
+
+sl		Requested by 		Recommendation authorities		Approval authority
+
+1		Branch head		AH/RM, ZMOP				Operation Head/Head of security
+
+2		Area Head		RM/ZMOP					Operation Head/Head of security
+
+3		Regional Manager        ZMOP					Operation Head/Head of security
+
+4		ZM OP			Head security				Operation Head
+
+5		Head Security		nil					Operation Head
+
+
+
+
+
+                                                                                                                                                                                    
+
+3. Exception requesting purpose paths need to be developed.
+
+·         Drop down date wise penalty selection required
+
+·         Once selected  ,below detail will come automatically
+
+Branch name, Alert name, Alert date, count of alert, Penalty amount
+
+·         Remark colum should be provided their justification
+
+·         Conform button
+
+·         Status report for checking  current status
+
+
+
+4. Exception Recommendation purpose paths need to be developed
+
+·         Drop down for Request receivel
+
+·         Once selected  ,below  request detail will come automatically
+
+Branch name, Alert name, Alert date, count of alert, Penalty amount, justification remark
+
+·         Provide recommendation remark Colum
+
+·         Recommend/Not recommendation
+
+
+
+
+5. Exception Approval /Rejection purpose paths need to be developed
+
+·         Drop down for Request receivel
+
+·         Once selected  ,below  request detail will come automatically
+
+Branch name, Alert name, Alert date, count of alert, Penalty amount, justification remark, Recommendation remark
+
+·         Provide remark Colum
+
+·         Approval/reject option.
+
+
+
+4. Pop-up message should send to concerned field officials on each penalty generation.
+
+Pop-up content: "---------------alert has been noticed in your branch. Penalty¿¿¿.(Amount) Will be issued as per circular number .
+
+ 
+
+5. Report page
+
+·         Employee wise  penalty report
+
+Date ,branch id ,branch name ,alert name ,alert count ,penalty amount, Post, employee name ,Employee code
+
+·         Employee wise penalty Reversal report
+
+         Date, Date ,branch id ,branch name ,alert name ,alert count ,penalty amount, Post, employee name ,Employee code, Exception remark, Approval /Rejection remark.
